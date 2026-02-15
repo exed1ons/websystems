@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Room, FormData, ViewState, SearchFilters, SortOption } from './types';
 import Navigation from "./components/navigation";
 import Home from "./pages/home/home";
@@ -7,11 +7,15 @@ import Checkout from "./pages/checkout";
 import Success from "./pages/success";
 import Login from "./pages/login";
 import AdminDashboard from './pages/admin/dashboard';
+import { fetchRooms, createBooking } from './services/api';
 
 const App: React.FC = () => {
     const [view, setView] = useState<ViewState>('home');
     const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
+    const [rooms, setRooms] = useState<Room[]>([]);
+    const [roomsLoading, setRoomsLoading] = useState<boolean>(true);
+    const [roomsError, setRoomsError] = useState<string | null>(null);
     const [formData, setFormData] = useState<FormData>({ firstName: '', lastName: '', email: '', phone: '' });
     const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
     const [searchFilters, setSearchFilters] = useState<SearchFilters>({
@@ -23,22 +27,56 @@ const App: React.FC = () => {
     });
     const [sortOption, setSortOption] = useState<SortOption>({ field: 'price', direction: 'asc' });
 
-    // Mock Data
-    const rooms: Room[] = [
-        { id: 1, name: "Aurora Suite", price: 250, amenities: ["Private Spa", "24/7 Butler", "Terrace"], description: "Unmatched elegance with a private terrace overlooking the historic city center.", type: 'deluxe' },
-        { id: 2, name: "Heritage Deluxe", price: 180, amenities: ["King Bed", "Smart UI", "Mini Bar"], description: "Classic design meets modern comfort in our newly renovated heritage rooms.", type: 'comfort' },
-        { id: 3, name: "Urban Comfort", price: 120, amenities: ["Wifi", "Desk", "Rain Shower"], description: "Minimalist and quiet, designed for the modern international traveler.", type: 'standard' }
-    ];
+    useEffect(() => {
+        const loadRooms = async () => {
+            try {
+                setRoomsLoading(true);
+                setRoomsError(null);
+                const data = await fetchRooms();
+                setRooms(data);
+            } catch (error) {
+                console.error('Failed to load rooms:', error);
+                setRoomsError('Failed to load rooms. Please refresh the page.');
+            } finally {
+                setRoomsLoading(false);
+            }
+        };
 
-    const handleBookingConfirm = () => {
+        loadRooms();
+    }, []);
+
+    const handleBookingConfirm = async () => {
         const newErrors: Partial<Record<keyof FormData, string>> = {};
         if (!formData.firstName) newErrors.firstName = "Name required";
         if (!formData.email.includes('@')) newErrors.email = "Check email format";
 
         setErrors(newErrors);
         if (Object.keys(newErrors).length === 0) {
-            setLoading(true);
-            setTimeout(() => { setLoading(false); setView('success'); }, 1500);
+            try {
+                setLoading(true);
+
+                const bookingData = {
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    email: formData.email,
+                    phone: formData.phone,
+                    roomId: selectedRoom?.id || 1,
+                    checkIn: '2025-11-21', // TODO: Get from search filters
+                    checkOut: '2025-11-23', // TODO: Get from search filters
+                    totalPrice: (selectedRoom?.price || 0) * 2
+                };
+
+                await createBooking(bookingData);
+
+                setView('success');
+            } catch (error) {
+                console.error('Booking error:', error);
+                setErrors({
+                    email: error instanceof Error ? error.message : 'Booking failed. Please try again.'
+                });
+            } finally {
+                setLoading(false);
+            }
         }
     };
 
